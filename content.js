@@ -1,4 +1,4 @@
-console.log("chatgpt-bookmarks V-1.0")
+console.log("chatgpt-bookmarks v1.0")
 
 // Generate a unique, stable ID for a message based on its content
 const generateMessageId = (msg) => {
@@ -104,26 +104,36 @@ const animateNewBookmark = () => {
 }
 
 
+// Add bookmark buttons to all Chatgpt responses
 const addButtons = () => {
-    const messages = document.querySelectorAll("div.markdown")
+    const messageWrappers = document.querySelectorAll(
+        '[data-message-author-role="assistant"]'
+    )
+
     const chatId = location.pathname
 
-    messages.forEach((msg) => {
-        if (msg.dataset.bookmarkAdded || msg.dataset.bookmarkProcessing) return
+    messageWrappers.forEach((wrapper) => {
+        const msg = wrapper.querySelector("div.markdown")
+        if (!msg) return
 
-        msg.dataset.bookmarkProcessing = "true"
+        if (wrapper.dataset.bookmarkAdded) return
 
-        // Assign a unique, stable ID to this message if it doesn't have one
+        wrapper.dataset.bookmarkAdded = "true"
+
         if (!msg.dataset.messageId) {
             msg.dataset.messageId = generateMessageId(msg)
         }
 
+        let container = msg.querySelector(":scope > .bookmark-container")
+
+        if (!container) {
+            container = document.createElement("div")
+            container.className = "bookmark-container"
+            msg.appendChild(container)
+        }
+
         const button = createBookmarkButton(msg, chatId)
-
-        msg.appendChild(button)
-
-        msg.dataset.bookmarkAdded = "true"
-        delete msg.dataset.bookmarkProcessing
+        container.appendChild(button)
     })
 }
 
@@ -258,6 +268,7 @@ const createbookmarkItem = (bm) => {
 }
 
 
+// Render bookmarks in the sidebar
 const renderBookmarks = () => {
     const chatId = location.pathname
     const sidebar = createSidebar()
@@ -418,6 +429,7 @@ const onUrlChange = () => {
 
 // Run once, add buttons to the end of chatgpt responses
 addButtons()
+console.log("Initial buttons added")
 
 const originalPushState = history.pushState
 
@@ -451,18 +463,12 @@ document.addEventListener("click", () => {
 
 let addButtonsTimeout;
 
-const observer = new MutationObserver((mutations) => {
-    const hasNewNodes = mutations.some(m => m.addedNodes.length > 0)
+const observer = new MutationObserver(() => {
+    clearTimeout(addButtonsTimeout)
 
-    if (!hasNewNodes) return
-
-    if (addButtonsTimeout) {
-        clearTimeout(addButtonsTimeout)
-    }
-
-    addButtonsTimeout = setTimeout(()  => {
+    addButtonsTimeout = setTimeout(() => {
         addButtons()
-    }, 200)
+    }, 500)
 })
 
 observer.observe(document.body, { childList: true, subtree: true })
