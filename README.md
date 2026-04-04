@@ -77,3 +77,4 @@ Known issues:
 
 * During rendering the page wobbles as bookmark buttons are added to responses
 * Bookmarks ordering is inconsistent
+* Switching tabs when a response is being generated causes the bookmark button to appear in the middle of the response
