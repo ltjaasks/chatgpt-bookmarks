@@ -1,4 +1,9 @@
-console.log("chatgpt-bookmarks v1.0")
+console.log("Bookmarks for ChatGPT v1.0")
+
+const getMessages = () => {
+    return document.querySelectorAll('[data-message-author-role="assistant"]')
+}
+
 
 // Generate a unique, stable ID for a message based on its content
 const generateMessageId = (msg) => {
@@ -7,9 +12,20 @@ const generateMessageId = (msg) => {
     // remove UI elements
     clone.querySelectorAll(".bookmark-btn, .bookmark-input-container").forEach(el => el.remove())
 
-    const text = clone.innerText || clone.textContent
-    const hash = simpleHash(text)
+    //const text = clone.innerText || clone.textContent
+    const firstParagraph = msg.querySelector("p")?.innerText || ""
+    const hash = simpleHash(firstParagraph)
     return `msg_${hash}`
+}
+
+
+const addMessageIds = () => {
+    const messages = getMessages()
+    messages.forEach(msg => {
+        if (!msg.dataset.messageId) {
+            msg.dataset.messageId = generateMessageId(msg)
+        }
+    })
 }
 
 
@@ -25,6 +41,7 @@ const simpleHash = (str) => {
 }
 
 
+// Creates the bookmark button element
 const createBookmarkButton = (msg, chatId) => {
     const button = document.createElement("button")
     button.innerText = "🔖 Bookmark"
@@ -36,10 +53,11 @@ const createBookmarkButton = (msg, chatId) => {
 }
 
 
+// Handles bookmark button click. If message already bookmarked, shows a message. Otherwise, shows input for bookmark title.
 const handleBookmarkClick = (msg, chatId) => {
     chrome.storage.local.get(["bookmarks"], (result) => {
         const bookmarks = result.bookmarks || []
-        const messageId = msg.dataset.messageId
+        const messageId = msg.dataset.messageId // problem (fixed, I think)
 
         const exists = bookmarks.some(b =>
             b.messageId === messageId && b.chatId === chatId
@@ -58,6 +76,8 @@ const handleBookmarkClick = (msg, chatId) => {
 
 
 const showBookmarkInput = (msg, chatId, messageId) => {
+    const wrapper = msg.closest('[data-message-author-role="assistant"]')
+
     const input = document.createElement("input")
     input.className = "bookmark-input"
     input.placeholder = "Bookmark title..."
@@ -72,7 +92,7 @@ const showBookmarkInput = (msg, chatId, messageId) => {
     container.appendChild(input)
     container.appendChild(saveBtn)
 
-    msg.appendChild(container)
+    wrapper.appendChild(container)
 
     input.focus()
 
@@ -80,7 +100,7 @@ const showBookmarkInput = (msg, chatId, messageId) => {
         const title = input.value.trim()
         if (!title) return
 
-        saveBookmark({ title, messageId, chatId}, () => {
+        saveBookmark({ title, messageId, chatId}, msg, () => {
             renderBookmarks()
             animateNewBookmark()
             container.remove()
@@ -106,23 +126,25 @@ const animateNewBookmark = () => {
 
 // Add bookmark buttons to all Chatgpt responses
 const addButtons = () => {
-    const messageWrappers = document.querySelectorAll(
+    const messages = document.querySelectorAll(
         '[data-message-author-role="assistant"]'
     )
 
     const chatId = location.pathname
 
-    messageWrappers.forEach((wrapper) => {
-        const msg = wrapper.querySelector("div.markdown")
+    messages.forEach((msg) => {
         if (!msg) return
 
-        if (wrapper.dataset.bookmarkAdded) return
+        if (msg.dataset.bookmarkAdded) return
 
-        wrapper.dataset.bookmarkAdded = "true"
+        msg.dataset.bookmarkAdded = "true"
 
+        /*
+        // Assign message ID if not already assigned
         if (!msg.dataset.messageId) {
             msg.dataset.messageId = generateMessageId(msg)
         }
+        */
 
         let container = msg.querySelector(":scope > .bookmark-container")
 
@@ -133,12 +155,15 @@ const addButtons = () => {
         }
 
         const button = createBookmarkButton(msg, chatId)
-        container.appendChild(button)
+        msg.appendChild(button)
     })
 }
 
 
-const saveBookmark = (bookmark, callback) => {
+const saveBookmark = (bookmark, msg, callback) => {
+    if (!msg.dataset.messageId) {
+        msg.dataset.messageId = generateMessageId(msg)
+    }
     chrome.storage.local.get(["bookmarks"], (result) => {
         const bookmarks = result.bookmarks || []
 
@@ -164,7 +189,7 @@ const createSidebar = () => {
 
 
 const getMessagePositionMap = () => {
-    const messages = Array.from(document.querySelectorAll("div.markdown"))
+    const messages = Array.from(getMessages())
     const map = new Map()
 
     messages.forEach((msg, index) => {
@@ -189,7 +214,7 @@ const getSortedBookmarks = (bookmarks, chatId, positionMap) => {
 
 
 const scrollToMessage = (messageId) => {
-    const messages = document.querySelectorAll("div.markdown")
+    const messages = getMessages()
     const target = Array.from(messages).find(
         msg => msg.dataset.messageId === messageId
     )
@@ -211,6 +236,7 @@ const scrollToMessage = (messageId) => {
 }
 
 
+// Menu for delete/edit bookmark
 const handleContextMenu = (e, bm) => {
     e.preventDefault()
 
@@ -336,7 +362,7 @@ const createMenu = (bm) => {
 const handleEdit = (bm, menu) => {
     menu.remove()
 
-    const messages = document.querySelectorAll("div.markdown")
+    const messages = getMessages()
     const msg = Array.from(messages).find(m => m.dataset.messageId === bm.messageId)
 
     if (!msg) return
@@ -416,7 +442,7 @@ const onUrlChange = () => {
         lastChatId = currentChatId
 
         // Reset message state
-        document.querySelectorAll("div.markdown").forEach(msg => {
+        getMessages().forEach(msg => {
             delete msg.dataset.bookmarkAdded
             delete msg.dataset.bookmarkProcessing
             delete msg.dataset.messageId
@@ -429,10 +455,10 @@ const onUrlChange = () => {
 
 // Run once, add buttons to the end of chatgpt responses
 addButtons()
-console.log("Initial buttons added")
 
 const originalPushState = history.pushState
 
+// Calls onUrlChange on history changes (single page app solution)
 const wrapHistoryMethod = (type) => {
     const original = history[type]
 
@@ -446,6 +472,7 @@ const wrapHistoryMethod = (type) => {
 wrapHistoryMethod("pushState")
 wrapHistoryMethod("replaceState")
 
+// Browser back/forward buttons handler
 window.addEventListener("popstate", onUrlChange)
 
 setInterval(() => {
@@ -456,6 +483,7 @@ setInterval(() => {
 
 // Render on load
 renderBookmarks()
+addMessageIds()
 
 document.addEventListener("click", () => {
     document.querySelectorAll(".bookmark-menu").forEach(m => m.remove())
@@ -468,7 +496,7 @@ const observer = new MutationObserver(() => {
 
     addButtonsTimeout = setTimeout(() => {
         addButtons()
-    }, 500)
+    }, 200)
 })
 
 observer.observe(document.body, { childList: true, subtree: true })
